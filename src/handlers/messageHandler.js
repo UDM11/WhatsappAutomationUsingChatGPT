@@ -5,6 +5,7 @@ const whatsappService = require('../services/whatsapp');
 const chatgptService = require('../services/chatgpt');
 const logger = require('../utils/logger');
 const config = require('../config');
+const eventBus = require('../utils/eventBus');
 
 const IMAGE_DIR = path.join(__dirname, '..', '..', 'images');
 if (!fs.existsSync(IMAGE_DIR)) {
@@ -13,27 +14,62 @@ if (!fs.existsSync(IMAGE_DIR)) {
 
 class MessageHandler {
   constructor() {
-    this.userConversations = new Map();
+    this.userConversations = new Map(); // phone -> conversationId
+    this.messageHistories = new Map();  // phone -> [{ sender: 'user'|'bot', text, timestamp, type }]
     this.processingUsers = new Set();
+    this.totalMessagesProcessed = 0;
   }
 
-  async processIncomingMessage(messageData) {
+  _recordMessage(phone, sender, text, type = 'text', mediaUrl = null) {
+    if (!this.messageHistories.has(phone)) {
+      this.messageHistories.set(phone, []);
+    }
+    const history = this.messageHistories.get(phone);
+    history.push({
+      sender,
+      text,
+      type,
+      mediaUrl,
+      timestamp: new Date().toISOString(),
+    });
+    // Keep max 50 messages per user in memory
+    if (history.length > 50) {
+      history.shift();
+    }
+  }
+
+  async processIncomingMessage(messageData, isSimulation = false) {
     const { from, messageId, text, type, timestamp } = messageData;
 
-    logger.info(`Incoming message from ${from}`, { type, messageId });
+    this.totalMessagesProcessed++;
+    logger.info(`Processing incoming message from ${from}`, { type, messageId, isSimulation });
+
+    this._recordMessage(from, 'user', text || `[${type} message]`, type);
+
+    eventBus.emitEvent('incoming_message', {
+      from,
+      messageId,
+      type,
+      text,
+      isSimulation,
+      timestamp: timestamp || new Date().toISOString(),
+    });
 
     if (this.processingUsers.has(from)) {
-      await whatsappService.sendTextMessage(
-        from,
-        'Still processing your previous message. Please wait a moment...'
-      );
-      return;
+      const waitReply = 'Still processing your previous message. Please wait a moment...';
+      this._recordMessage(from, 'bot', waitReply, 'text');
+      if (!isSimulation && config.whatsapp.accessToken) {
+        await whatsappService.sendTextMessage(from, waitReply);
+      }
+      return { status: 'busy', reply: waitReply };
     }
 
     this.processingUsers.add(from);
 
     try {
-      await whatsappService.markAsRead(messageId);
+      if (!isSimulation && messageId && config.whatsapp.accessToken) {
+        await whatsappService.markAsRead(messageId).catch(() => {});
+      }
 
       let chatgptInput = '';
 
@@ -42,82 +78,99 @@ class MessageHandler {
           chatgptInput = text;
           break;
         case 'image':
-          chatgptInput = '[User sent an image. Please describe what you see or ask for clarification.]';
+          chatgptInput = text ? `[User sent an image with caption: "${text}"]` : '[User sent an image. Please describe or acknowledge.]';
           break;
         case 'document':
-          chatgptInput = '[User sent a document. Please help them with the document content.]';
+          chatgptInput = text ? `[User sent a document: "${text}"]` : '[User sent a document.]';
           break;
         case 'audio':
-          chatgptInput = '[User sent a voice message. Please respond to their voice message.]';
+          chatgptInput = '[User sent a voice audio note.]';
           break;
         case 'video':
-          chatgptInput = '[User sent a video. Please help them with the video content.]';
+          chatgptInput = '[User sent a video message.]';
           break;
         case 'location':
-          chatgptInput = '[User shared a location. Please help them with information about their location.]';
+          chatgptInput = '[User shared their location.]';
           break;
         case 'sticker':
-          chatgptInput = '[User sent a sticker. Please respond with a friendly message.]';
+          chatgptInput = '[User sent a sticker.]';
           break;
         default:
           chatgptInput = text || '[User sent a message]';
       }
 
       if (!chatgptInput || chatgptInput.trim() === '') {
-        await whatsappService.sendTextMessage(
-          from,
-          'I received your message but could not understand the content. Could you please type your message?'
-        );
-        return;
+        const fallback = 'I received your message but could not understand the content. Could you please type your message?';
+        this._recordMessage(from, 'bot', fallback, 'text');
+        if (!isSimulation && config.whatsapp.accessToken) {
+          await whatsappService.sendTextMessage(from, fallback);
+        }
+        return { status: 'empty', reply: fallback };
       }
 
       const conversationId = this.userConversations.get(from);
 
-      await whatsappService.sendTextMessage(from, 'typing...');
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
+      // Call ChatGPT service
       const response = await chatgptService.sendMessage(chatgptInput, conversationId);
 
-      if (!conversationId) {
-        const newUrl = chatgptService.page.url();
-        const match = newUrl.match(/\/c\/([a-f0-9-]+)/);
-        if (match) {
-          this.userConversations.set(from, match[1]);
+      if (!conversationId && chatgptService.page) {
+        try {
+          const newUrl = chatgptService.page.url();
+          const match = newUrl.match(/\/c\/([a-f0-9-]+)/);
+          if (match) {
+            this.userConversations.set(from, match[1]);
+          }
+        } catch (err) {
+          // Ignore URL inspection error
         }
       }
 
       const replyText = response.text || '';
       const images = response.images || [];
 
-      if (images.length > 0) {
-        await whatsappService.sendTextWithTyping(from, replyText || 'Here is the image you requested:', 1500);
+      this._recordMessage(from, 'bot', replyText, 'text', images[0] || null);
 
-        for (const imgUrl of images) {
-          try {
-            const publicUrl = await this._publishImage(imgUrl, from);
-            if (publicUrl) {
-              await whatsappService.sendImageMessage(from, publicUrl, replyText);
-              logger.info(`Image sent to ${from}`);
+      eventBus.emitEvent('outgoing_reply', {
+        to: from,
+        replyText,
+        images,
+        isSimulation,
+      });
+
+      // Send to real WhatsApp if not simulation
+      if (!isSimulation && config.whatsapp.accessToken && config.whatsapp.phoneNumberId) {
+        if (images.length > 0) {
+          for (const imgUrl of images) {
+            try {
+              const publicUrl = await this._publishImage(imgUrl, from);
+              if (publicUrl) {
+                await whatsappService.sendImageMessage(from, publicUrl, replyText);
+              }
+            } catch (imgError) {
+              logger.error('Failed to send image:', imgError);
+              await whatsappService.sendTextMessage(from, replyText);
             }
-          } catch (imgError) {
-            logger.error('Failed to send image:', imgError);
-            await whatsappService.sendTextMessage(
-              from,
-              'I could not send the image. (Image generation error)'
-            );
           }
+        } else {
+          await whatsappService.sendTextMessage(from, replyText);
         }
-      } else {
-        await whatsappService.sendTextWithTyping(from, replyText, 1500);
       }
 
-      logger.info(`Response sent to ${from}`);
+      logger.info(`Response completed for ${from}`);
+      return {
+        status: 'success',
+        reply: replyText,
+        images,
+        conversationId: this.userConversations.get(from) || null,
+      };
     } catch (error) {
       logger.error(`Error processing message from ${from}:`, error);
-      await whatsappService.sendTextMessage(
-        from,
-        'Sorry, I encountered an error processing your message. Please try again later.'
-      );
+      const errReply = 'Sorry, I encountered an error processing your message. Please try again later.';
+      this._recordMessage(from, 'bot', errReply, 'text');
+      if (!isSimulation && config.whatsapp.accessToken) {
+        await whatsappService.sendTextMessage(from, errReply).catch(() => {});
+      }
+      return { status: 'error', error: error.message, reply: errReply };
     } finally {
       this.processingUsers.delete(from);
     }
@@ -164,22 +217,41 @@ class MessageHandler {
     });
   }
 
-  async handleSessionTimeout(userId) {
-    this.userConversations.delete(userId);
-    await whatsappService.sendTextMessage(
-      userId,
-      'Session expired. Starting a new conversation. How can I help you?'
-    );
+  getConversationHistory(userId) {
+    return this.messageHistories.get(userId) || [];
+  }
+
+  getAllConversations() {
+    const list = [];
+    for (const [phone, messages] of this.messageHistories.entries()) {
+      list.push({
+        phone,
+        conversationId: this.userConversations.get(phone) || null,
+        messageCount: messages.length,
+        lastMessage: messages[messages.length - 1] || null,
+      });
+    }
+    return list;
   }
 
   clearConversation(userId) {
-    this.userConversations.delete(userId);
+    if (userId === 'all') {
+      this.userConversations.clear();
+      this.messageHistories.clear();
+      logger.info('Cleared all user conversations');
+    } else {
+      this.userConversations.delete(userId);
+      this.messageHistories.delete(userId);
+      logger.info(`Cleared conversation for ${userId}`);
+    }
   }
 
   getStats() {
     return {
       activeConversations: this.userConversations.size,
+      totalUsersTracked: this.messageHistories.size,
       processingUsers: this.processingUsers.size,
+      totalMessagesProcessed: this.totalMessagesProcessed,
     };
   }
 }

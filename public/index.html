@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp Business AI Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Ambient backdrop lighting -->
+  <div class="ambient-glow glow-primary"></div>
+  <div class="ambient-glow glow-secondary"></div>
+
+  <main class="viewport-wrapper">
+    <!-- Premium Smartphone Mockup -->
+    <div class="phone-shell">
+      <!-- Phone Hardware Bezel & Dynamic Island -->
+      <div class="phone-hardware-top">
+        <div class="phone-dynamic-island" id="dynamic-island">
+          <div class="island-camera"></div>
+          <div class="island-indicator live" title="ChatGPT Session Active"></div>
+        </div>
+      </div>
+
+      <div class="phone-screen">
+        <!-- iOS/Android Authentic Status Bar -->
+        <div class="phone-status-bar">
+          <span class="status-time" id="device-clock">9:41</span>
+          <div class="status-icons">
+            <svg class="status-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 20.3a1 1 0 0 0 1.35 1.35l2.69-.62A8.94 8.94 0 0 0 12 21c4.97 0 9-4.03 9-9s-4.03-9-9-9z"/></svg>
+            <span class="status-signal">5G</span>
+            <div class="status-battery">
+              <div class="battery-level"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WhatsApp Application Container -->
+        <div class="wa-application">
+          <!-- WhatsApp Top Navigation Bar -->
+          <header class="wa-app-header">
+            <div class="wa-header-contact" id="btn-open-profile" title="View Business Profile">
+              <button class="wa-nav-back" id="wa-back-btn" aria-label="Back">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              </button>
+              
+              <div class="wa-profile-avatar-wrapper">
+                <div class="wa-profile-avatar">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="#ffffff"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V18a1 1 0 0 1-2 0v-1.07A7 7 0 0 1 5.07 11H4a1 1 0 0 1 0-2h1.07A7 7 0 0 1 11 5.07V4a1 1 0 0 1 2 0v1.07A7 7 0 0 1 18.93 11H20a1 1 0 0 1 0 2h-1.07A7 7 0 0 1 13 16.93zM8 11a4 4 0 1 0 8 0 4 4 0 0 0-8 0z"/></svg>
+                </div>
+                <div class="wa-verified-badge" title="Meta Verified Business">✓</div>
+              </div>
+
+              <div class="wa-header-details">
+                <div class="wa-contact-title-row">
+                  <h1 class="wa-contact-name">ChatGPT Business AI</h1>
+                </div>
+                <span class="wa-presence-status" id="wa-presence">online</span>
+              </div>
+            </div>
+
+            <div class="wa-header-actions">
+              <button class="wa-hdr-btn" id="btn-hdr-video" title="Video Call">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+              </button>
+              <button class="wa-hdr-btn" id="btn-hdr-call" title="Voice Call">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.44-5.15-3.75-6.59-6.59l1.97-1.57c.28-.28.36-.67.25-1.02A11.36 11.36 0 0 1 8.56 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1z"/></svg>
+              </button>
+              <button class="wa-hdr-btn" id="btn-hdr-menu" title="Menu">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- 3-Dots Dropdown Menu -->
+          <div class="wa-dropdown-menu" id="wa-dropdown-menu">
+            <div class="dropdown-item" id="menu-view-profile">
+              <span>👤 View Business Profile</span>
+            </div>
+            <div class="dropdown-item" id="menu-clear-chat">
+              <span>🗑️ Clear Chat History</span>
+            </div>
+            <div class="dropdown-item" id="menu-ai-status">
+              <span>⚡ Session & System Info</span>
+            </div>
+          </div>
+
+          <!-- Quick Interactive Smart Suggestions -->
+          <div class="wa-smart-pills">
+            <button class="smart-pill" data-prompt="Hello! What automated services can you provide on WhatsApp?">👋 Introduce AI</button>
+            <button class="smart-pill" data-prompt="Write a professional product inquiry response for a customer.">💼 Business Reply</button>
+            <button class="smart-pill" data-prompt="Summarize standard return and refund policies for e-commerce.">📦 Store Policy</button>
+            <button class="smart-pill" data-prompt="Give me 3 marketing tips to grow sales on WhatsApp.">🚀 Marketing</button>
+          </div>
+
+          <!-- Chat Messages Canvas -->
+          <div class="wa-chat-canvas" id="wa-chat-canvas">
+            <div class="wa-encryption-notice">
+              <span class="enc-icon">🔒</span>
+              <span>Messages are end-to-end automated with ChatGPT & Meta Cloud API.</span>
+            </div>
+
+            <div class="wa-date-separator">TODAY</div>
+
+            <!-- Initial Verified Business Welcome -->
+            <div class="wa-bubble wa-bot-bubble">
+              <div class="wa-bubble-content">
+                👋 <strong>Welcome to WhatsApp AI Assistant!</strong><br/>
+                This automated agent connects directly to <code>chatgpt.com</code> using your active session token and Cloudflare clearance. Send a message to chat in real-time.
+              </div>
+              <div class="wa-bubble-meta">
+                <span class="wa-time" id="initial-time">9:41 AM</span>
+              </div>
+            </div>
+
+            <!-- Typing wave indicator -->
+            <div class="wa-typing-wave" id="wa-typing-wave" style="display: none;">
+              <div class="wave-dots">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Attachment Sheet Modal (Popup) -->
+          <div class="wa-attachment-sheet" id="attachment-sheet">
+            <div class="attachment-option" data-type="image" data-msg="[User sent a product receipt image for warranty verification]">
+              <div class="attach-icon attach-photo">📷</div>
+              <span>Photos</span>
+            </div>
+            <div class="attachment-option" data-type="document" data-msg="[User sent an invoice document: Invoice_2026.pdf]">
+              <div class="attach-icon attach-doc">📄</div>
+              <span>Document</span>
+            </div>
+            <div class="attachment-option" data-type="location" data-msg="[User shared GPS location: Kathmandu, Nepal]">
+              <div class="attach-icon attach-loc">📍</div>
+              <span>Location</span>
+            </div>
+            <div class="attachment-option" data-type="audio" data-msg="[User sent a voice memo: Please check order status]">
+              <div class="attach-icon attach-audio">🎤</div>
+              <span>Audio</span>
+            </div>
+          </div>
+
+          <!-- Bottom WhatsApp Message Composer -->
+          <footer class="wa-composer">
+            <button class="composer-icon-btn" id="btn-emoji" title="Emoji">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-3.5-9c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm7 0c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+            </button>
+
+            <div class="composer-input-pill">
+              <input 
+                type="text" 
+                id="wa-input" 
+                class="composer-text-input" 
+                placeholder="Message" 
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button class="composer-icon-btn attach-btn" id="btn-attach" title="Attach media">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5V6H9v9.5a3 3 0 0 0 6 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
+              </button>
+            </div>
+
+            <!-- Send / Voice Note Action Button -->
+            <button class="composer-action-btn" id="btn-send-action" title="Send message">
+              <svg id="icon-send" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+              <svg id="icon-mic" class="hidden" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+              </svg>
+            </button>
+          </footer>
+        </div>
+
+        <!-- Sliding Business Profile Card Modal -->
+        <div class="wa-profile-drawer" id="profile-drawer">
+          <div class="drawer-header">
+            <button class="drawer-close" id="btn-close-drawer">✕</button>
+            <h3>Business Profile</h3>
+          </div>
+          <div class="drawer-content">
+            <div class="drawer-avatar-section">
+              <div class="drawer-avatar">🤖</div>
+              <h2>ChatGPT Business AI</h2>
+              <span class="drawer-badge">Official Business Account ✓</span>
+            </div>
+            <div class="drawer-info-group">
+              <div class="drawer-info-item">
+                <span class="info-label">Category</span>
+                <span class="info-val">AI Automation & Support</span>
+              </div>
+              <div class="drawer-info-item">
+                <span class="info-label">Backend Provider</span>
+                <span class="info-val">ChatGPT Web Session (chatgpt.com)</span>
+              </div>
+              <div class="drawer-info-item">
+                <span class="info-label">Meta Cloud Webhook</span>
+                <span class="info-val" style="color: #25d366;">Active & Verified</span>
+              </div>
+              <div class="drawer-info-item">
+                <span class="info-label">Response Latency</span>
+                <span class="info-val" id="drawer-latency">Live</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
