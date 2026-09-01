@@ -48,20 +48,36 @@ class ChatGPTService {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
       });
 
-      const tokens = config.chatgpt.sessionToken.split(',').map((t) => t.trim());
-      const cookies = tokens.map((value, i) => ({
-        name: i === 0 ? '__Secure-next-auth.session-token' : `__Secure-next-auth.session-token.${i}`,
-        value,
-        domain: '.chatgpt.com',
-        path: '/',
-        httpOnly: true,
-        secure: true,
-      }));
+      const rawToken = config.chatgpt.sessionToken || '';
+      const tokens = rawToken.split(',').map((t) => t.trim()).filter(Boolean);
+      const cookies = [];
+
+      if (tokens.length === 1) {
+        cookies.push({
+          name: '__Secure-next-auth.session-token',
+          value: tokens[0],
+          domain: '.chatgpt.com',
+          path: '/',
+          httpOnly: true,
+          secure: true,
+        });
+      } else if (tokens.length > 1) {
+        tokens.forEach((val, idx) => {
+          cookies.push({
+            name: `__Secure-next-auth.session-token.${idx}`,
+            value: val,
+            domain: '.chatgpt.com',
+            path: '/',
+            httpOnly: true,
+            secure: true,
+          });
+        });
+      }
 
       if (config.chatgpt.cfClearance) {
         cookies.push({
           name: 'cf_clearance',
-          value: config.chatgpt.cfClearance,
+          value: config.chatgpt.cfClearance.trim(),
           domain: '.chatgpt.com',
           path: '/',
           httpOnly: true,
