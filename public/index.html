@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp ChatGPT Pro • Mission Control & Simulator</title>
+  <meta name="description" content="State-of-the-art WhatsApp ChatGPT Automation Dashboard, Live Simulator & Cloud Management Console">
+  
+  <!-- Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Ambient Background Glows -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-logo">
+        <i class="fa-brands fa-whatsapp"></i>
+        <div class="ai-badge"><i class="fa-solid fa-sparkles"></i> AI</div>
+      </div>
+      <div class="brand-info">
+        <h1>WhatsApp ChatGPT <span>Pro</span></h1>
+        <p class="subtitle">Cloud Business Automation • Live Engine v2.0</p>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div class="status-pill status-online" id="global-status-pill">
+        <span class="pulse-dot"></span>
+        <span class="status-label">Engine Online</span>
+      </div>
+      <div class="env-pill" id="env-badge">Production</div>
+    </div>
+
+    <div class="header-right">
+      <button class="action-btn secondary" id="btn-refresh-stats" title="Refresh Live Analytics">
+        <i class="fa-solid fa-arrows-rotate"></i>
+      </button>
+      <button class="action-btn secondary" id="btn-clear-chat" title="Clear Simulator History">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+      <a href="https://github.com/UDM11/WhatsappAutomationUsingChatGPT" target="_blank" class="action-btn github-btn">
+        <i class="fa-brands fa-github"></i>
+        <span>GitHub Repo</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Dual-Pane Studio Layout -->
+  <main class="studio-container">
+    
+    <!-- LEFT PANE: Flagship Mobile WhatsApp Simulator -->
+    <section class="simulator-section">
+      <div class="section-title-bar">
+        <h2><i class="fa-brands fa-whatsapp"></i> Live WhatsApp Simulator</h2>
+        <span class="sim-phone-label" id="active-phone-display">+977 981-8155158</span>
+      </div>
+
+      <!-- iPhone 15 Pro Frame -->
+      <div class="iphone-frame">
+        <!-- Dynamic Island -->
+        <div class="dynamic-island">
+          <div class="island-camera"></div>
+          <div class="island-indicator"></div>
+        </div>
+
+        <!-- Phone Status Bar -->
+        <div class="phone-status-bar">
+          <span class="phone-time" id="device-time">12:00</span>
+          <div class="phone-status-icons">
+            <i class="fa-solid fa-signal"></i>
+            <span class="network-type">5G</span>
+            <i class="fa-solid fa-wifi"></i>
+            <i class="fa-solid fa-battery-full"></i>
+          </div>
+        </div>
+
+        <!-- WhatsApp Chat Header -->
+        <div class="wa-chat-header">
+          <div class="wa-header-back">
+            <i class="fa-solid fa-arrow-left"></i>
+          </div>
+          <div class="wa-avatar-container">
+            <div class="wa-avatar">
+              <i class="fa-solid fa-robot"></i>
+            </div>
+            <span class="online-indicator"></span>
+          </div>
+          <div class="wa-contact-info">
+            <div class="wa-contact-name">
+              <span>ChatGPT Assistant</span>
+              <i class="fa-solid fa-circle-check verified-badge" title="Meta Verified Business"></i>
+            </div>
+            <div class="wa-contact-status" id="wa-presence-text">online</div>
+          </div>
+          <div class="wa-header-actions">
+            <button class="wa-icon-btn" title="Video Call"><i class="fa-solid fa-video"></i></button>
+            <button class="wa-icon-btn" title="Voice Call"><i class="fa-solid fa-phone"></i></button>
+            <button class="wa-icon-btn" title="Options"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+          </div>
+        </div>
+
+        <!-- WhatsApp Chat Message Feed -->
+        <div class="wa-chat-feed" id="chat-feed">
+          <!-- Date Separator -->
+          <div class="chat-date-pill">TODAY</div>
+
+          <!-- Default Bot Greeting -->
+          <div class="chat-bubble bot-bubble">
+            <div class="bubble-content">
+              <p><strong>👋 Welcome to ChatGPT WhatsApp Assistant!</strong></p>
+              <p>I am your 24/7 AI intelligence partner directly on WhatsApp. Ask questions, generate code, analyze stocks, or type <code>/help</code> for quick shortcuts.</p>
+            </div>
+            <div class="bubble-meta">
+              <span class="bubble-time">12:00 PM</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Real-time Typing Indicator Bubble -->
+        <div class="typing-bubble" id="typing-indicator" style="display: none;">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+
+        <!-- WhatsApp Input Bar -->
+        <form class="wa-input-container" id="chat-form">
+          <button type="button" class="wa-input-btn" id="btn-emoji-toggle" title="Insert Emoji">
+            <i class="fa-regular fa-face-smile"></i>
+          </button>
+          <button type="button" class="wa-input-btn" id="btn-attach-toggle" title="Attach Media">
+            <i class="fa-solid fa-paperclip"></i>
+          </button>
+
+          <!-- Input Text Area -->
+          <textarea
+            id="user-input-box"
+            class="wa-text-input"
+            rows="1"
+            placeholder="Type a message or /command..."
+            required
+          ></textarea>
+
+          <button type="submit" class="wa-send-btn" id="btn-send-message" title="Send Message">
+            <i class="fa-solid fa-paper-plane"></i>
+          </button>
+        </form>
+
+        <!-- Attachment Modal Popover -->
+        <div class="attach-popup" id="attach-popup" style="display: none;">
+          <button type="button" class="attach-item" data-type="image"><i class="fa-solid fa-image"></i><span>Photo</span></button>
+          <button type="button" class="attach-item" data-type="document"><i class="fa-solid fa-file-lines"></i><span>Document</span></button>
+          <button type="button" class="attach-item" data-type="audio"><i class="fa-solid fa-microphone"></i><span>Audio</span></button>
+          <button type="button" class="attach-item" data-type="location"><i class="fa-solid fa-location-dot"></i><span>Location</span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANE: Mission Control Dashboard -->
+    <section class="dashboard-section">
+      
+      <!-- Key Metric Cards -->
+      <div class="metric-grid">
+        <div class="metric-card glass-card">
+          <div class="metric-icon metric-purple"><i class="fa-solid fa-comments"></i></div>
+          <div class="metric-data">
+            <span class="metric-value" id="stat-total-msgs">0</span>
+            <span class="metric-label">Messages Handled</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-card">
+          <div class="metric-icon metric-emerald"><i class="fa-solid fa-users"></i></div>
+          <div class="metric-data">
+            <span class="metric-value" id="stat-active-users">1</span>
+            <span class="metric-label">Active WhatsApp Users</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-card">
+          <div class="metric-icon metric-blue"><i class="fa-solid fa-bolt"></i></div>
+          <div class="metric-data">
+            <span class="metric-value" id="stat-latency">~3.2s</span>
+            <span class="metric-label">Avg AI Latency</span>
+          </div>
+        </div>
+
+        <div class="metric-card glass-card">
+          <div class="metric-icon metric-amber"><i class="fa-solid fa-memory"></i></div>
+          <div class="metric-data">
+            <span class="metric-value" id="stat-memory">0 MB</span>
+            <span class="metric-label">RAM Consumption</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Slash Command Launcher -->
+      <div class="dashboard-card glass-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-terminal"></i> Interactive Quick Prompts</h3>
+          <span class="badge-sub">Click to execute instantly</span>
+        </div>
+        <div class="quick-prompts-grid">
+          <button class="quick-prompt-btn" data-prompt="/help">
+            <i class="fa-solid fa-circle-question"></i>
+            <span>/help</span>
+          </button>
+          <button class="quick-prompt-btn" data-prompt="/reset">
+            <i class="fa-solid fa-rotate-right"></i>
+            <span>/reset</span>
+          </button>
+          <button class="quick-prompt-btn" data-prompt="/ping">
+            <i class="fa-solid fa-satellite-dish"></i>
+            <span>/ping</span>
+          </button>
+          <button class="quick-prompt-btn" data-prompt="Write a Python function to check prime number">
+            <i class="fa-brands fa-python"></i>
+            <span>Python Prime Code</span>
+          </button>
+          <button class="quick-prompt-btn" data-prompt="Explain NEPSE stock analysis for beginners">
+            <i class="fa-solid fa-chart-line"></i>
+            <span>NEPSE Stock Insights</span>
+          </button>
+          <button class="quick-prompt-btn" data-prompt="Give me modern HTML and CSS landing page code">
+            <i class="fa-brands fa-html5"></i>
+            <span>HTML & CSS Code</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Meta WhatsApp API & ChatGPT Infrastructure Status -->
+      <div class="dashboard-card glass-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-server"></i> Cloud Infrastructure Status</h3>
+          <span class="badge-sub" id="uptime-display">Uptime: 0s</span>
+        </div>
+        <div class="infra-grid">
+          <div class="infra-item">
+            <div class="infra-label">Meta Cloud API</div>
+            <div class="infra-value" id="infra-meta-status"><i class="fa-solid fa-circle-check text-success"></i> Connected (+977 981-8155158)</div>
+          </div>
+          <div class="infra-item">
+            <div class="infra-label">ChatGPT Automation</div>
+            <div class="infra-value" id="infra-chatgpt-status"><i class="fa-solid fa-circle-check text-success"></i> Session Active (Chunked Auth)</div>
+          </div>
+          <div class="infra-item">
+            <div class="infra-label">Webhook Endpoint</div>
+            <div class="infra-value" id="infra-webhook-status"><span class="code-pill">/api/webhook</span> (Verified 200 OK)</div>
+          </div>
+          <div class="infra-item">
+            <div class="infra-label">Fly.io Node Server</div>
+            <div class="infra-value" id="infra-server-status"><span class="code-pill">0.0.0.0:3000</span> (Singapore Region)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Server Event Stream Console -->
+      <div class="dashboard-card glass-card console-card">
+        <div class="card-header">
+          <h3><i class="fa-solid fa-code"></i> Live Event Stream & Server Logs</h3>
+          <div class="console-actions">
+            <button class="icon-small-btn" id="btn-clear-logs" title="Clear Log Output"><i class="fa-solid fa-eraser"></i></button>
+          </div>
+        </div>
+        <div class="console-terminal" id="console-feed">
+          <div class="console-line line-info">[System] Connected to Real-time Server Event Stream.</div>
+          <div class="console-line line-success">[Ready] WhatsApp ChatGPT Bot listening on port 3000.</div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Image Preview Lightbox Modal -->
+  <div class="lightbox-modal" id="lightbox-modal" style="display: none;">
+    <div class="lightbox-overlay" id="lightbox-overlay"></div>
+    <div class="lightbox-content">
+      <img src="" id="lightbox-img" alt="ChatGPT Generated Preview">
+      <button class="lightbox-close" id="lightbox-close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

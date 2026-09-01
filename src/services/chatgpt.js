@@ -319,6 +319,27 @@ class ChatGPTService {
     this.isProcessing = false;
   }
 
+  getStatus() {
+    return {
+      isReady: this.isReady,
+      isInitializing: this.isInitializing,
+      hasSessionToken: Boolean(config.chatgpt.sessionToken),
+      hasCfClearance: Boolean(config.chatgpt.cfClearance),
+      queueLength: this.queue.length,
+      isProcessing: this.isProcessing,
+      mode: 'puppeteer',
+      lastActive: new Date(this.lastActiveTime).toISOString(),
+    };
+  }
+
+  async healthCheck() {
+    return this.isReady && this.page && !this.page.isClosed();
+  }
+
+  setMode(mode) {
+    this.mode = mode;
+  }
+
   async close() {
     if (this.browser) {
       await this.browser.close();
