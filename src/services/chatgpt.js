@@ -37,13 +37,16 @@ class ChatGPTService {
       );
 
       if (config.chatgpt.sessionToken) {
-        await this.page.setCookie({
-          name: '__Secure-next-auth.session-token',
-          value: config.chatgpt.sessionToken,
-          domain: '.chatgpt.com',
-          httpOnly: true,
-          secure: true,
-        });
+        const tokens = config.chatgpt.sessionToken.split(',').map((t) => t.trim());
+        this.page.setCookie(
+          tokens.map((value, i) => ({
+            name: i === 0 ? '__Secure-next-auth.session-token' : `__Secure-next-auth.session-token.${i}`,
+            value,
+            domain: '.chatgpt.com',
+            httpOnly: true,
+            secure: true,
+          }))
+        );
       }
 
       if (config.chatgpt.cfClearance) {
