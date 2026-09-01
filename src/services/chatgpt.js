@@ -142,19 +142,20 @@ class ChatGPTService {
         await this.page.focus(inputSelector);
         await this._delay(200);
 
-        // Try typing and clicking the send button
+        // Type prompt with small delay
         await this.page.keyboard.type(item.message, { delay: 10 });
-        await this._delay(200);
+        await this._delay(400);
 
-        // Click send button or press Enter
-        const sendBtn = await this.page.$('button[data-testid="send-button"], button[aria-label="Send prompt"]');
+        // Click send button (with fallback to Enter)
+        const sendBtnSelector = 'button[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"], button.mb-1, button[aria-label="Send"]';
+        const sendBtn = await this.page.$(sendBtnSelector);
         if (sendBtn) {
           await sendBtn.click().catch(() => {});
         } else {
           await this.page.keyboard.press('Enter');
         }
 
-        // Resilient polling for response completion
+        // Resilient polling for response completion (handles code blocks, lists, and images)
         let replyText = '';
         let replyImages = [];
         let completed = false;
@@ -168,7 +169,10 @@ class ChatGPTService {
 
         while (Date.now() - startWait < maxWaitMs) {
           const status = await this.page.evaluate((initialMsgCount) => {
-            const messages = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
+            const assistantNodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
+            const markdownNodes = Array.from(document.querySelectorAll('.markdown'));
+            const messages = assistantNodes.length > 0 ? assistantNodes : markdownNodes;
+
             if (messages.length <= initialMsgCount) {
               return { hasNewMsg: false, isStreaming: true, text: '', images: [] };
             }
