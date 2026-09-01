@@ -1,6 +1,7 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const config = require('../config');
+const whatsappFormatter = require('../utils/whatsappFormatter');
 
 const API_URL = `https://graph.facebook.com/${config.whatsapp.apiVersion}`;
 
@@ -15,113 +16,108 @@ class WhatsAppService {
     });
   }
 
-  async sendTextMessage(to, text) {
+  /**
+   * Send a formatted text message to a user on WhatsApp.
+   * Automatically formats markdown (bold, lists, headers, code blocks).
+   */
+  async sendTextMessage(to, text, previewUrl = false) {
     try {
-      const truncatedText = text.length > 4096 ? text.substring(0, 4093) + '...' : text;
+      if (!config.whatsapp.phoneNumberId || !config.whatsapp.accessToken) {
+        logger.warn('WhatsApp credentials not configured; skipping sendTextMessage');
+        return null;
+      }
 
-      const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: to,
-        type: 'text',
-        text: {
-          preview_url: false,
-          body: truncatedText,
-        },
-      });
+      const formatted = whatsappFormatter.format(text);
+      const chunks = whatsappFormatter.splitIntoChunks(formatted);
+      let lastResponse = null;
 
-      logger.info(`Message sent to ${to}`, { messageId: response.data.messages?.[0]?.id });
-      return response.data;
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        if (!chunk.trim()) continue;
+
+        const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: to,
+          type: 'text',
+          text: {
+            preview_url: previewUrl,
+            body: chunk,
+          },
+        });
+
+        lastResponse = response.data;
+        logger.info(`Message chunk [${i + 1}/${chunks.length}] sent to ${to}`, {
+          messageId: response.data.messages?.[0]?.id,
+        });
+
+        // Small interval between chunks so WhatsApp delivers in correct order
+        if (chunks.length > 1 && i < chunks.length - 1) {
+          await this._delay(400);
+        }
+      }
+
+      return lastResponse;
     } catch (error) {
       logger.error('Failed to send WhatsApp message:', error.response?.data || error.message);
       throw error;
     }
   }
 
-  async sendTextWithTyping(to, text, typingDelay = 1000) {
+  /**
+   * Send a reaction emoji to a specific user message.
+   */
+  async sendReaction(to, messageId, emoji) {
     try {
-      await this.sendPresence(to, 'composing');
-      await this._delay(typingDelay);
-      await this.sendTextMessage(to, text);
-      await this.sendPresence(to, 'paused');
-    } catch (error) {
-      logger.error('Failed to send message with typing:', error);
-      throw error;
-    }
-  }
+      if (!config.whatsapp.phoneNumberId || !messageId) return null;
 
-  async sendPresence(to, presence) {
-    try {
-      await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
+      const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
+        recipient_type: 'individual',
         to: to,
         type: 'reaction',
         reaction: {
-          message_id: '',
-          emoji: '',
+          message_id: messageId,
+          emoji: emoji,
         },
       });
-    } catch {
-      // Presence API may not be supported, ignore
+
+      return response.data;
+    } catch (error) {
+      logger.debug('Reaction failed (optional feature):', error.response?.data || error.message);
+      return null;
     }
   }
 
+  /**
+   * Mark an incoming message as Read (gives blue ticks in WhatsApp).
+   */
   async markAsRead(messageId) {
     try {
-      await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
+      if (!config.whatsapp.phoneNumberId || !messageId) return null;
+
+      const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
         status: 'read',
         message_id: messageId,
       });
+
+      logger.debug(`Marked message ${messageId} as read`);
+      return response.data;
     } catch (error) {
-      logger.error('Failed to mark as read:', error);
+      logger.debug('Mark as read error:', error.response?.data || error.message);
+      return null;
     }
   }
 
-  async sendSeenStatus(to) {
-    try {
-      await this.client.post(
-        `/${config.whatsapp.phoneNumberId}/messages`,
-        {
-          messaging_product: 'whatsapp',
-          status: 'read',
-        },
-        {
-          params: { messaging_product: 'whatsapp' },
-        }
-      );
-    } catch {
-      // Ignore seen status errors
-    }
-  }
-
-  async getMediaUrl(mediaId) {
-    try {
-      const response = await this.client.get(`/${mediaId}`);
-      return response.data.url;
-    } catch (error) {
-      logger.error('Failed to get media URL:', error);
-      throw error;
-    }
-  }
-
-  async downloadMedia(mediaUrl) {
-    try {
-      const response = await axios.get(mediaUrl, {
-        headers: {
-          Authorization: `Bearer ${config.whatsapp.accessToken}`,
-        },
-        responseType: 'arraybuffer',
-      });
-      return Buffer.from(response.data);
-    } catch (error) {
-      logger.error('Failed to download media:', error);
-      throw error;
-    }
-  }
-
+  /**
+   * Send an image with formatted caption to a WhatsApp user.
+   */
   async sendImageMessage(to, imageUrl, caption = '') {
     try {
+      if (!config.whatsapp.phoneNumberId) return null;
+
+      const formattedCaption = caption ? whatsappFormatter.format(caption) : '';
       const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
@@ -129,20 +125,122 @@ class WhatsAppService {
         type: 'image',
         image: {
           link: imageUrl,
-          caption: caption,
+          caption: formattedCaption,
         },
       });
 
       logger.info(`Image sent to ${to}`);
       return response.data;
     } catch (error) {
-      logger.error('Failed to send image:', error);
+      logger.error('Failed to send image:', error.response?.data || error.message);
       throw error;
     }
   }
 
+  /**
+   * Send interactive quick-reply buttons (Max 3 buttons supported by WhatsApp API).
+   */
+  async sendQuickReplyButtons(to, bodyText, buttons, headerText = null, footerText = 'Powered by ChatGPT') {
+    try {
+      if (!config.whatsapp.phoneNumberId) return null;
+
+      const buttonObjects = buttons.slice(0, 3).map((b, idx) => ({
+        type: 'reply',
+        reply: {
+          id: b.id || `btn_${idx}`,
+          title: (b.title || b.text || '').substring(0, 20),
+        },
+      }));
+
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: to,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: {
+            text: whatsappFormatter.format(bodyText),
+          },
+          action: {
+            buttons: buttonObjects,
+          },
+        },
+      };
+
+      if (headerText) {
+        payload.interactive.header = {
+          type: 'text',
+          text: headerText,
+        };
+      }
+
+      if (footerText) {
+        payload.interactive.footer = {
+          text: footerText,
+        };
+      }
+
+      const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, payload);
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to send interactive buttons (falling back to text):', error.response?.data || error.message);
+      return this.sendTextMessage(to, bodyText);
+    }
+  }
+
+  /**
+   * Send interactive list menu (e.g. for options, tools, settings).
+   */
+  async sendInteractiveList(to, bodyText, buttonTitle, sections, headerText = null, footerText = 'Powered by ChatGPT') {
+    try {
+      if (!config.whatsapp.phoneNumberId) return null;
+
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: to,
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          body: {
+            text: whatsappFormatter.format(bodyText),
+          },
+          action: {
+            button: buttonTitle.substring(0, 20),
+            sections: sections,
+          },
+        },
+      };
+
+      if (headerText) {
+        payload.interactive.header = {
+          type: 'text',
+          text: headerText,
+        };
+      }
+
+      if (footerText) {
+        payload.interactive.footer = {
+          text: footerText,
+        };
+      }
+
+      const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, payload);
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to send interactive list (falling back to text):', error.response?.data || error.message);
+      return this.sendTextMessage(to, bodyText);
+    }
+  }
+
+  /**
+   * Send a document file.
+   */
   async sendDocumentMessage(to, documentUrl, caption = '', filename = 'document.pdf') {
     try {
+      if (!config.whatsapp.phoneNumberId) return null;
+
       const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
@@ -158,13 +256,18 @@ class WhatsAppService {
       logger.info(`Document sent to ${to}`);
       return response.data;
     } catch (error) {
-      logger.error('Failed to send document:', error);
+      logger.error('Failed to send document:', error.response?.data || error.message);
       throw error;
     }
   }
 
+  /**
+   * Send location coordinates.
+   */
   async sendLocationMessage(to, latitude, longitude, name = '', address = '') {
     try {
+      if (!config.whatsapp.phoneNumberId) return null;
+
       const response = await this.client.post(`/${config.whatsapp.phoneNumberId}/messages`, {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
@@ -181,11 +284,14 @@ class WhatsAppService {
       logger.info(`Location sent to ${to}`);
       return response.data;
     } catch (error) {
-      logger.error('Failed to send location:', error);
+      logger.error('Failed to send location:', error.response?.data || error.message);
       throw error;
     }
   }
 
+  /**
+   * Helper delay.
+   */
   _delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

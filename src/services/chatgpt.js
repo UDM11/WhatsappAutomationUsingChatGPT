@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const logger = require('../utils/logger');
 const config = require('../config');
 const eventBus = require('../utils/eventBus');
@@ -7,38 +7,56 @@ class ChatGPTService {
   constructor() {
     this.browser = null;
     this.page = null;
-    this.isProcessing = false;
+    this.isReady = false;
+    this.isInitializing = false;
     this.queue = [];
-    this.lastError = null;
-    this.lastResponseTime = null;
-    this.totalRequests = 0;
+    this.isProcessing = false;
+    this.lastActiveTime = Date.now();
   }
 
   async init() {
-    if (this.page && !this.page.isClosed()) {
-      return this.page;
+    if (this.isReady && this.page && !this.page.isClosed()) {
+      return;
     }
 
+    if (this.isInitializing) {
+      while (this.isInitializing) {
+        await this._delay(300);
+      }
+      return;
+    }
+
+    this.isInitializing = true;
     try {
-      logger.info('Starting ChatGPT Puppeteer instance...');
+      logger.info('Starting ChatGPT Puppeteer automation service...');
+
+      const isWin = process.platform === 'win32';
+      const chromePath = isWin
+        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+        : '/usr/bin/chromium';
+
       const launchOptions = {
-        headless: 'new',
+        headless: process.env.NODE_ENV === 'production' ? 'new' : false,
+        executablePath: chromePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-gpu',
+          '--disable-accelerated-2d-canvas',
           '--no-first-run',
-          '--disable-blink-features=AutomationControlled',
+          '--no-zygote',
+          '--disable-gpu',
           '--window-size=1280,800',
         ],
       };
 
-      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-      }
-
       this.browser = await puppeteer.launch(launchOptions);
+      this.browser.on('disconnected', () => {
+        logger.warn('Puppeteer browser disconnected. Will reinitialize on next prompt.');
+        this.isReady = false;
+        this.page = null;
+        this.browser = null;
+      });
 
       this.page = await this.browser.newPage();
       await this.page.setUserAgent(
@@ -48,6 +66,7 @@ class ChatGPTService {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
       });
 
+      // Format session cookies (support both single and NextAuth chunked tokens .0, .1)
       const rawToken = config.chatgpt.sessionToken || '';
       const tokens = rawToken.split(',').map((t) => t.trim()).filter(Boolean);
       const cookies = [];
@@ -85,41 +104,66 @@ class ChatGPTService {
         });
       }
 
-      await this.page.setCookie(...cookies);
-      logger.info('Navigating to chatgpt.com with session cookies...');
-      await this.page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
-      await this.page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 25000 });
-      
-      this.lastError = null;
-      logger.info('✅ ChatGPT ready and connected to chatgpt.com');
-      eventBus.emitEvent('chatgpt_ready', { status: 'ready' });
-      return this.page;
-    } catch (error) {
-      let pageDetails = '';
-      if (this.page && !this.page.isClosed()) {
-        try {
-          const title = await this.page.title();
-          const currentUrl = this.page.url();
-          pageDetails = ` (Page title: "${title}", URL: ${currentUrl})`;
-        } catch (e) {}
+      if (cookies.length > 0) {
+        await this.page.setCookie(...cookies);
       }
-      this.page = null;
-      this.lastError = error.message + pageDetails;
-      logger.error('Failed to initialize ChatGPT service:', this.lastError);
-      eventBus.emitEvent('chatgpt_error', { error: this.lastError });
-      throw new Error(this.lastError);
+
+      logger.info('Navigating to chatgpt.com with authenticated session...');
+      await this.page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+      // Check for prompt input textarea
+      await this.page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 25000 });
+      this.isReady = true;
+      logger.info('✅ ChatGPT ready and connected to chatgpt.com');
+    } catch (error) {
+      logger.error('Failed to initialize ChatGPT Puppeteer service:', error);
+      this.isReady = false;
+      if (this.browser) {
+        await this.browser.close().catch(() => {});
+        this.browser = null;
+        this.page = null;
+      }
+      throw error;
+    } finally {
+      this.isInitializing = false;
     }
   }
 
-  async sendMessage(message) {
+  /**
+   * Reset the current ChatGPT session (starts a fresh chat thread).
+   */
+  async resetSession() {
+    try {
+      if (this.page && !this.page.isClosed()) {
+        logger.info('Resetting ChatGPT conversation to fresh chat...');
+        await this.page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await this.page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 20000 });
+      }
+    } catch (error) {
+      logger.error('Error resetting ChatGPT session:', error);
+    }
+  }
+
+  /**
+   * Send a prompt message to ChatGPT and return the extracted reply.
+   */
+  async sendMessage(message, conversationId = null) {
     return new Promise((resolve, reject) => {
-      this.queue.push({ message, resolve, reject, timestamp: Date.now() });
+      this.queue.push({
+        message,
+        conversationId,
+        resolve,
+        reject,
+        queuedAt: Date.now(),
+      });
       this._processQueue();
     });
   }
 
   async _processQueue() {
-    if (this.isProcessing || this.queue.length === 0) return;
+    if (this.isProcessing || this.queue.length === 0) {
+      return;
+    }
 
     this.isProcessing = true;
 
@@ -134,20 +178,22 @@ class ChatGPTService {
         const inputSelector = '#prompt-textarea, textarea, div[contenteditable="true"]';
         await this.page.waitForSelector(inputSelector, { timeout: 15000 });
 
-        // Count assistant messages BEFORE sending prompt to track the new response
+        // Count assistant messages BEFORE sending prompt to accurately detect the new reply
         const initialCount = await this.page.evaluate(() => {
-          return document.querySelectorAll('[data-message-author-role="assistant"]').length;
+          const assistantRoles = document.querySelectorAll('[data-message-author-role="assistant"]');
+          return assistantRoles.length > 0 ? assistantRoles.length : document.querySelectorAll('.markdown').length;
         });
 
         await this.page.focus(inputSelector);
         await this._delay(200);
 
-        // Type prompt with small delay
+        // Type prompt
         await this.page.keyboard.type(item.message, { delay: 10 });
         await this._delay(400);
 
-        // Click send button (with fallback to Enter)
-        const sendBtnSelector = 'button[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"], button.mb-1, button[aria-label="Send"]';
+        // Click send button or press Enter
+        const sendBtnSelector =
+          'button[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"], button.mb-1, button[aria-label="Send"]';
         const sendBtn = await this.page.$(sendBtnSelector);
         if (sendBtn) {
           await sendBtn.click().catch(() => {});
@@ -155,7 +201,7 @@ class ChatGPTService {
           await this.page.keyboard.press('Enter');
         }
 
-        // Resilient polling for response completion (handles code blocks, lists, and images)
+        // Resilient polling for response completion (handles text, code blocks, lists, and images)
         let replyText = '';
         let replyImages = [];
         let completed = false;
@@ -178,6 +224,17 @@ class ChatGPTService {
             }
 
             const lastMsg = messages[messages.length - 1];
+
+            // Extract formatted text preserving code blocks
+            const preBlocks = Array.from(lastMsg.querySelectorAll('pre'));
+            preBlocks.forEach((pre) => {
+              const codeElem = pre.querySelector('code');
+              const codeText = codeElem ? (codeElem.innerText || codeElem.textContent) : (pre.innerText || pre.textContent);
+              const langMatch = pre.className.match(/language-(\w+)/) || (codeElem ? codeElem.className.match(/language-(\w+)/) : null);
+              const lang = langMatch ? langMatch[1] : '';
+              pre.setAttribute('data-extracted-code', `\n\`\`\`${lang}\n${codeText.trim()}\n\`\`\`\n`);
+            });
+
             const markdown = lastMsg.querySelector('.markdown') || lastMsg;
             const text = (markdown.innerText || markdown.textContent || '').trim();
 
@@ -187,7 +244,7 @@ class ChatGPTService {
 
             const isStreaming = Boolean(stopBtn || streaming || imageLoading);
 
-            // Extract images
+            // Extract images (e.g. from DALL-E)
             const imgElements = Array.from(lastMsg.querySelectorAll('img'));
             const images = [];
             imgElements.forEach((img) => {
@@ -210,100 +267,70 @@ class ChatGPTService {
               break;
             }
 
-            // If text length hasn't changed for 3 consecutive polls (2.4s), assume done
-            if (status.text.length === lastLength && status.text.length > 20) {
+            // Text stability fallback
+            if (replyText.length === lastLength) {
               stableCount++;
-              if (stableCount >= 3) {
+              if (stableCount >= 4) {
                 completed = true;
                 break;
               }
             } else {
               stableCount = 0;
-              lastLength = status.text.length;
+              lastLength = replyText.length;
             }
           }
 
           await this._delay(pollIntervalMs);
         }
 
-        // If we extracted text even after timeout, use it
-        if (!replyText && replyImages.length === 0) {
+        if (!completed && replyText.length === 0) {
           throw new Error('Timeout waiting for ChatGPT response');
         }
 
-        if (!replyText && replyImages.length > 0) {
-          replyText = 'Here is the generated image:';
-        }
-
-        this.totalRequests++;
-        this.lastResponseTime = Date.now() - startTime;
-
-        eventBus.emitEvent('chatgpt_prompt_complete', {
-          prompt: item.message,
-          response: replyText,
-          imagesCount: replyImages.length,
-          durationMs: this.lastResponseTime,
+        const duration = Date.now() - startTime;
+        eventBus.emitEvent('chatgpt_prompt_done', {
+          message: item.message,
+          reply: replyText,
+          duration,
         });
 
-        item.resolve({ text: replyText, images: replyImages });
+        this.lastActiveTime = Date.now();
+        item.resolve({ text: replyText, images: replyImages, duration });
       } catch (error) {
         logger.error('Error sending message to ChatGPT:', error.message);
-        this.lastError = error.message;
         eventBus.emitEvent('chatgpt_error', { error: error.message });
 
-        // Auto-heal: Refresh ChatGPT page to clear any stuck input or modal
+        // Auto-heal session on error
         if (this.page && !this.page.isClosed()) {
           try {
             logger.info('Auto-healing: Reloading ChatGPT page after error...');
-            await this.page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 20000 });
-          } catch (reloadErr) {
-            logger.warn('Failed to reload ChatGPT page:', reloadErr.message);
+            await this.page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+          } catch {
+            this.isReady = false;
           }
+        } else {
+          this.isReady = false;
         }
 
         item.reject(error);
       }
-
-      await this._delay(600);
     }
 
     this.isProcessing = false;
   }
 
-  async _delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
   async close() {
     if (this.browser) {
-      try { await this.browser.close(); } catch (err) {}
-      this.browser = null;
+      await this.browser.close();
+      this.isReady = false;
       this.page = null;
-      logger.info('ChatGPT service closed');
+      this.browser = null;
+      logger.info('ChatGPT browser closed');
     }
   }
 
-  async healthCheck() {
-    try {
-      if (!this.page || this.page.isClosed()) return false;
-      const url = this.page.url();
-      return url.includes('chatgpt.com');
-    } catch {
-      return false;
-    }
-  }
-
-  getStatus() {
-    return {
-      isInitialized: Boolean(this.page && !this.page.isClosed()),
-      isProcessing: this.isProcessing,
-      queueLength: this.queue.length,
-      hasSessionToken: Boolean(config.chatgpt.sessionToken),
-      hasCfClearance: Boolean(config.chatgpt.cfClearance),
-      lastError: this.lastError,
-      lastResponseTime: this.lastResponseTime,
-      totalRequests: this.totalRequests,
-    };
+  _delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

@@ -15,9 +15,10 @@ if (!fs.existsSync(IMAGE_DIR)) {
 class MessageHandler {
   constructor() {
     this.userConversations = new Map(); // phone -> conversationId
-    this.messageHistories = new Map();  // phone -> [{ sender: 'user'|'bot', text, timestamp, type }]
+    this.messageHistories = new Map(); // phone -> [{ sender: 'user'|'bot', text, timestamp, type }]
     this.processingUsers = new Set();
     this.totalMessagesProcessed = 0;
+    this.startTime = Date.now();
   }
 
   _recordMessage(phone, sender, text, type = 'text', mediaUrl = null) {
@@ -38,6 +39,70 @@ class MessageHandler {
     }
   }
 
+  /**
+   * Handle built-in slash commands (/help, /start, /reset, /ping, /stats)
+   */
+  async _handleCommand(from, text, isSimulation, messageId) {
+    const cmd = text.trim().toLowerCase();
+
+    if (cmd === '/start' || cmd === '/help' || cmd === 'help' || cmd === 'hi' || cmd === 'hello') {
+      const welcomeMenu = `*🤖 Welcome to ChatGPT Assistant on WhatsApp!*
+
+I am your AI companion powered by *ChatGPT*. Ask me anything directly here!
+
+*🌟 Key Capabilities:*
+• *💬 General Chat & Advice* — Ask questions, brainstorm ideas, draft emails.
+• *💻 Coding & Debugging* — HTML, CSS, JavaScript, Python, SQL, React.
+• *📊 Business & Finance* — Stock analysis, NEPSE, economics, market research.
+• *✍️ Writing & Translation* — Essays, summaries, Nepali/English translation.
+• *🎨 Image Generation* — Type \`/image <prompt>\` to generate visuals.
+
+*⚡ Useful Commands:*
+• \`/reset\` or \`/new\` — Start a fresh new chat session.
+• \`/ping\` — Check server latency and health.
+• \`/help\` — Display this menu.
+
+_Just type your message below to get started!_ 👇`;
+
+      this._recordMessage(from, 'bot', welcomeMenu, 'text');
+      if (!isSimulation && config.whatsapp.accessToken) {
+        await whatsappService.sendTextMessage(from, welcomeMenu);
+      }
+      return { status: 'command', reply: welcomeMenu };
+    }
+
+    if (cmd === '/reset' || cmd === '/new' || cmd === '/clear') {
+      this.userConversations.delete(from);
+      await chatgptService.resetSession().catch(() => {});
+      const resetMsg = `*🔄 Conversation Reset!*
+
+Your previous context has been cleared. What would you like to explore next?`;
+
+      this._recordMessage(from, 'bot', resetMsg, 'text');
+      if (!isSimulation && config.whatsapp.accessToken) {
+        await whatsappService.sendTextMessage(from, resetMsg);
+      }
+      return { status: 'command', reply: resetMsg };
+    }
+
+    if (cmd === '/ping') {
+      const uptimeSec = Math.floor((Date.now() - this.startTime) / 1000);
+      const pingMsg = `*🏓 Pong!*
+• *Status:* 🟢 Online & Connected
+• *ChatGPT Ready:* ${chatgptService.isReady ? '✅ Yes' : '⏳ Initializing'}
+• *Uptime:* ${uptimeSec} seconds
+• *Processed Messages:* ${this.totalMessagesProcessed}`;
+
+      this._recordMessage(from, 'bot', pingMsg, 'text');
+      if (!isSimulation && config.whatsapp.accessToken) {
+        await whatsappService.sendTextMessage(from, pingMsg);
+      }
+      return { status: 'command', reply: pingMsg };
+    }
+
+    return null;
+  }
+
   async processIncomingMessage(messageData, isSimulation = false) {
     const { from, messageId, text, type, timestamp } = messageData;
 
@@ -55,8 +120,20 @@ class MessageHandler {
       timestamp: timestamp || new Date().toISOString(),
     });
 
+    // 1. Instant Blue Ticks (Mark as Read)
+    if (!isSimulation && messageId && config.whatsapp.accessToken) {
+      await whatsappService.markAsRead(messageId).catch(() => {});
+    }
+
+    // 2. Check for built-in slash commands
+    if (type === 'text' && text && text.startsWith('/')) {
+      const cmdResult = await this._handleCommand(from, text, isSimulation, messageId);
+      if (cmdResult) return cmdResult;
+    }
+
+    // 3. Prevent duplicate overlap queue collision
     if (this.processingUsers.has(from)) {
-      const waitReply = 'Still processing your previous message. Please wait a moment...';
+      const waitReply = '⏳ *Still typing your previous response...* Please give me a few seconds!';
       this._recordMessage(from, 'bot', waitReply, 'text');
       if (!isSimulation && config.whatsapp.accessToken) {
         await whatsappService.sendTextMessage(from, waitReply);
@@ -67,8 +144,9 @@ class MessageHandler {
     this.processingUsers.add(from);
 
     try {
+      // 4. Send reaction indicator (hourglass ⏳)
       if (!isSimulation && messageId && config.whatsapp.accessToken) {
-        await whatsappService.markAsRead(messageId).catch(() => {});
+        await whatsappService.sendReaction(from, messageId, '💡').catch(() => {});
       }
 
       let chatgptInput = '';
@@ -78,29 +156,33 @@ class MessageHandler {
           chatgptInput = text;
           break;
         case 'image':
-          chatgptInput = text ? `[User sent an image with caption: "${text}"]` : '[User sent an image. Please describe or acknowledge.]';
+          chatgptInput = text
+            ? `[User sent an image with caption: "${text}". Please provide a helpful response.]`
+            : '[User shared a photo with you. Please acknowledge and ask how you can help.]';
           break;
         case 'document':
-          chatgptInput = text ? `[User sent a document: "${text}"]` : '[User sent a document.]';
+          chatgptInput = text
+            ? `[User uploaded a document titled: "${text}".]`
+            : '[User shared a document file.]';
           break;
         case 'audio':
-          chatgptInput = '[User sent a voice audio note.]';
+          chatgptInput = '[User sent a voice message. Please politely let them know you received the voice note.]';
           break;
         case 'video':
           chatgptInput = '[User sent a video message.]';
           break;
         case 'location':
-          chatgptInput = '[User shared their location.]';
+          chatgptInput = '[User shared their live GPS location coordinates.]';
           break;
         case 'sticker':
-          chatgptInput = '[User sent a sticker.]';
+          chatgptInput = '[User sent a fun sticker.]';
           break;
         default:
           chatgptInput = text || '[User sent a message]';
       }
 
       if (!chatgptInput || chatgptInput.trim() === '') {
-        const fallback = 'I received your message but could not understand the content. Could you please type your message?';
+        const fallback = 'I received your message but could not read the text. Could you please type your question?';
         this._recordMessage(from, 'bot', fallback, 'text');
         if (!isSimulation && config.whatsapp.accessToken) {
           await whatsappService.sendTextMessage(from, fallback);
@@ -110,7 +192,7 @@ class MessageHandler {
 
       const conversationId = this.userConversations.get(from);
 
-      // Call ChatGPT service
+      // 5. Call ChatGPT Service
       const response = await chatgptService.sendMessage(chatgptInput, conversationId);
 
       if (!conversationId && chatgptService.page) {
@@ -120,7 +202,7 @@ class MessageHandler {
           if (match) {
             this.userConversations.set(from, match[1]);
           }
-        } catch (err) {
+        } catch {
           // Ignore URL inspection error
         }
       }
@@ -137,7 +219,7 @@ class MessageHandler {
         isSimulation,
       });
 
-      // Send to real WhatsApp if not simulation
+      // 6. Send formatted reply back to WhatsApp
       if (!isSimulation && config.whatsapp.accessToken && config.whatsapp.phoneNumberId) {
         if (images.length > 0) {
           for (const imgUrl of images) {
@@ -147,7 +229,7 @@ class MessageHandler {
                 await whatsappService.sendImageMessage(from, publicUrl, replyText);
               }
             } catch (imgError) {
-              logger.error('Failed to send image:', imgError);
+              logger.error('Failed to send image, sending as text fallback:', imgError);
               await whatsappService.sendTextMessage(from, replyText);
             }
           }
@@ -156,7 +238,7 @@ class MessageHandler {
         }
       }
 
-      logger.info(`Response completed for ${from}`);
+      logger.info(`Response successfully delivered to ${from}`);
       return {
         status: 'success',
         reply: replyText,
@@ -165,7 +247,7 @@ class MessageHandler {
       };
     } catch (error) {
       logger.error(`Error processing message from ${from}:`, error);
-      const errReply = 'Sorry, I encountered an error processing your message. Please try again later.';
+      const errReply = '⚠️ *Sorry, I encountered a temporary issue generating your reply.* Please try again in a moment.';
       this._recordMessage(from, 'bot', errReply, 'text');
       if (!isSimulation && config.whatsapp.accessToken) {
         await whatsappService.sendTextMessage(from, errReply).catch(() => {});
