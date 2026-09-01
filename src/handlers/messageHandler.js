@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const whatsappService = require('../services/whatsapp');
+const aiProvider = require('../services/aiProvider');
 const chatgptService = require('../services/chatgpt');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -16,7 +17,7 @@ class MessageHandler {
   constructor() {
     this.userConversations = new Map(); // phone -> conversationId
     this.messageHistories = new Map(); // phone -> [{ sender: 'user'|'bot', text, timestamp, type }]
-    this.processingUsers = new Set();
+    this.processingUsers = new Map(); // phone -> timestamp
     this.totalMessagesProcessed = 0;
     this.startTime = Date.now();
   }
@@ -33,7 +34,6 @@ class MessageHandler {
       mediaUrl,
       timestamp: new Date().toISOString(),
     });
-    // Keep max 50 messages per user in memory
     if (history.length > 50) {
       history.shift();
     }
@@ -89,7 +89,6 @@ Your previous context has been cleared. What would you like to explore next?`;
       const uptimeSec = Math.floor((Date.now() - this.startTime) / 1000);
       const pingMsg = `*🏓 Pong!*
 • *Status:* 🟢 Online & Connected
-• *ChatGPT Ready:* ${chatgptService.isReady ? '✅ Yes' : '⏳ Initializing'}
 • *Uptime:* ${uptimeSec} seconds
 • *Processed Messages:* ${this.totalMessagesProcessed}`;
 
@@ -131,20 +130,17 @@ Your previous context has been cleared. What would you like to explore next?`;
       if (cmdResult) return cmdResult;
     }
 
-    // 3. Prevent duplicate overlap queue collision
-    if (this.processingUsers.has(from)) {
-      const waitReply = '⏳ *Still typing your previous response...* Please give me a few seconds!';
-      this._recordMessage(from, 'bot', waitReply, 'text');
-      if (!isSimulation && config.whatsapp.accessToken) {
-        await whatsappService.sendTextMessage(from, waitReply);
-      }
-      return { status: 'busy', reply: waitReply };
+    // 3. Lock with auto-expiry (max 25s)
+    const lockTime = this.processingUsers.get(from);
+    if (lockTime && Date.now() - lockTime < 25000) {
+      logger.info(`User ${from} is already in active generation queue. Silently queuing.`);
+      return { status: 'busy', reply: 'Queued' };
     }
 
-    this.processingUsers.add(from);
+    this.processingUsers.set(from, Date.now());
 
     try {
-      // 4. Send reaction indicator (hourglass ⏳)
+      // 4. Send reaction indicator (hourglass 💡)
       if (!isSimulation && messageId && config.whatsapp.accessToken) {
         await whatsappService.sendReaction(from, messageId, '💡').catch(() => {});
       }
@@ -166,16 +162,7 @@ Your previous context has been cleared. What would you like to explore next?`;
             : '[User shared a document file.]';
           break;
         case 'audio':
-          chatgptInput = '[User sent a voice message. Please politely let them know you received the voice note.]';
-          break;
-        case 'video':
-          chatgptInput = '[User sent a video message.]';
-          break;
-        case 'location':
-          chatgptInput = '[User shared their live GPS location coordinates.]';
-          break;
-        case 'sticker':
-          chatgptInput = '[User sent a fun sticker.]';
+          chatgptInput = '[User sent a voice audio note.]';
           break;
         default:
           chatgptInput = text || '[User sent a message]';
@@ -192,20 +179,8 @@ Your previous context has been cleared. What would you like to explore next?`;
 
       const conversationId = this.userConversations.get(from);
 
-      // 5. Call ChatGPT Service
-      const response = await chatgptService.sendMessage(chatgptInput, conversationId);
-
-      if (!conversationId && chatgptService.page) {
-        try {
-          const newUrl = chatgptService.page.url();
-          const match = newUrl.match(/\/c\/([a-f0-9-]+)/);
-          if (match) {
-            this.userConversations.set(from, match[1]);
-          }
-        } catch {
-          // Ignore URL inspection error
-        }
-      }
+      // 5. Call Intelligent AI Provider (with Fallback Protection)
+      const response = await aiProvider.generateResponse(chatgptInput, conversationId);
 
       const replyText = response.text || '';
       const images = response.images || [];
@@ -247,7 +222,7 @@ Your previous context has been cleared. What would you like to explore next?`;
       };
     } catch (error) {
       logger.error(`Error processing message from ${from}:`, error);
-      const errReply = '⚠️ *Sorry, I encountered a temporary issue generating your reply.* Please try again in a moment.';
+      const errReply = '⚠️ *Sorry, I encountered a temporary issue generating your reply.* Please send your question again in a few moments.';
       this._recordMessage(from, 'bot', errReply, 'text');
       if (!isSimulation && config.whatsapp.accessToken) {
         await whatsappService.sendTextMessage(from, errReply).catch(() => {});
@@ -320,10 +295,12 @@ Your previous context has been cleared. What would you like to explore next?`;
     if (userId === 'all') {
       this.userConversations.clear();
       this.messageHistories.clear();
+      this.processingUsers.clear();
       logger.info('Cleared all user conversations');
     } else {
       this.userConversations.delete(userId);
       this.messageHistories.delete(userId);
+      this.processingUsers.delete(userId);
       logger.info(`Cleared conversation for ${userId}`);
     }
   }
