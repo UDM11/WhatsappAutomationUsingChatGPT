@@ -1,3 +1,4 @@
+const fs = require('fs');
 const chatgptService = require('./chatgpt');
 const logger = require('../utils/logger');
 const axios = require('axios');
@@ -11,16 +12,16 @@ class AIProvider {
   /**
    * Get intelligent AI response with automatic fallback protection.
    */
-  async generateResponse(prompt, conversationId = null) {
+  async generateResponse(prompt, conversationId = null, mediaFilePath = null) {
     // 1. Try ChatGPT Puppeteer Service first
     try {
       logger.info('Attempting response via ChatGPT Puppeteer automation...');
       const result = await Promise.race([
-        chatgptService.sendMessage(prompt, conversationId),
+        chatgptService.sendMessage(prompt, conversationId, mediaFilePath),
         new Promise((_, reject) => setTimeout(() => reject(new Error('AI Engine Timeout (120s)')), 120000)),
       ]);
 
-      if (result && result.text && result.text.trim()) {
+      if (result && (result.text?.trim() || result.images?.length > 0)) {
         return result;
       }
     } catch (chatgptErr) {
@@ -31,12 +32,19 @@ class AIProvider {
     if (this.geminiApiKey) {
       try {
         logger.info('Executing Fallback via Google Gemini API...');
+        const parts = [{ text: prompt }];
+
+        if (mediaFilePath && fs.existsSync(mediaFilePath)) {
+          const ext = mediaFilePath.toLowerCase();
+          const mime = ext.endsWith('.png') ? 'image/png' : 'image/jpeg';
+          const b64 = fs.readFileSync(mediaFilePath).toString('base64');
+          parts.unshift({ inline_data: { mime_type: mime, data: b64 } });
+        }
+
         const geminiRes = await axios.post(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`,
-          {
-            contents: [{ parts: [{ text: prompt }] }],
-          },
-          { timeout: 15000 }
+          { contents: [{ parts }] },
+          { timeout: 20000 }
         );
 
         const text = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text;

@@ -1,3 +1,4 @@
+const fs = require('fs');
 const puppeteer = require('puppeteer-core');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -151,11 +152,12 @@ class ChatGPTService {
   /**
    * Send a prompt message to ChatGPT and return the extracted reply.
    */
-  async sendMessage(message, conversationId = null) {
+  async sendMessage(message, conversationId = null, mediaFilePath = null) {
     return new Promise((resolve, reject) => {
       this.queue.push({
         message,
         conversationId,
+        mediaFilePath,
         resolve,
         reject,
         queuedAt: Date.now(),
@@ -178,6 +180,20 @@ class ChatGPTService {
         eventBus.emitEvent('chatgpt_prompt_start', { message: item.message });
 
         await this.init();
+
+        // If an image or document was uploaded by the user, attach it to ChatGPT!
+        if (item.mediaFilePath && fs.existsSync(item.mediaFilePath)) {
+          try {
+            const fileInput = await this.page.$('input[type="file"]');
+            if (fileInput) {
+              logger.info(`Attaching user media file to ChatGPT composer: ${item.mediaFilePath}`);
+              await fileInput.uploadFile(item.mediaFilePath);
+              await this._delay(3000); // Allow ChatGPT to upload and render attachment preview
+            }
+          } catch (uploadErr) {
+            logger.warn('Failed to attach media to ChatGPT composer:', uploadErr.message);
+          }
+        }
 
         const inputSelector =
           '#mobile-composer-prompt, textarea.wm-composer-textarea, #prompt-textarea, textarea, div[contenteditable="true"]';

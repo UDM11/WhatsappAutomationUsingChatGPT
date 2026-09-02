@@ -141,6 +141,7 @@ Your previous context has been cleared. What would you like to explore next?`;
       }
 
       let chatgptInput = '';
+      let mediaFilePath = null;
 
       switch (type) {
         case 'text':
@@ -160,6 +161,7 @@ Your previous context has been cleared. What would you like to explore next?`;
             const downloaded = await whatsappService.downloadMedia(doc.id, tempPath);
 
             if (downloaded && fs.existsSync(downloaded)) {
+              mediaFilePath = downloaded;
               try {
                 const ext = path.extname(filename).toLowerCase();
                 const textExtensions = [
@@ -197,10 +199,17 @@ Your previous context has been cleared. What would you like to explore next?`;
         }
 
         case 'image': {
-          const caption = text || 'Please describe and analyze this image.';
+          const img = messageData.image || {};
+          const caption = text || 'Please describe and analyze this image in detail.';
+
+          if (!isSimulation && img.id) {
+            const tempPath = path.join(IMAGE_DIR, `user_img_${Date.now()}.jpg`);
+            mediaFilePath = await whatsappService.downloadMedia(img.id, tempPath);
+          }
+
           chatgptInput = text
-            ? `[User sent an image with caption: "${caption}". Please provide a detailed and helpful response.]`
-            : '[User shared a photo with you. Please acknowledge and describe how you can help analyze or work with it.]';
+            ? `Please analyze this attached photo and answer: "${caption}"`
+            : 'Please analyze this attached photo in detail and describe what you see.';
           break;
         }
 
@@ -229,8 +238,8 @@ Your previous context has been cleared. What would you like to explore next?`;
 
       const conversationId = this.userConversations.get(from);
 
-      // 5. Call Intelligent AI Provider (with Fallback Protection)
-      const response = await aiProvider.generateResponse(chatgptInput, conversationId);
+      // 5. Call Intelligent AI Provider with Vision & Media Support
+      const response = await aiProvider.generateResponse(chatgptInput, conversationId, mediaFilePath);
 
       const replyText = response.text || '';
       const images = response.images || [];
@@ -280,6 +289,9 @@ Your previous context has been cleared. What would you like to explore next?`;
       return { status: 'error', error: error.message, reply: errReply };
     } finally {
       this.processingUsers.delete(from);
+      if (mediaFilePath && fs.existsSync(mediaFilePath)) {
+        fs.unlink(mediaFilePath, () => {});
+      }
     }
   }
 
