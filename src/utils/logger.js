@@ -16,16 +16,14 @@ const logger = winston.createLogger({
   ],
 });
 
-if (config.nodeEnv !== 'production') {
-  logger.add(
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
-    })
-  );
-}
+logger.add(
+  new winston.transports.Console({
+    format: winston.format.combine(
+      winston.format.colorize(),
+      winston.format.simple()
+    ),
+  })
+);
 
 // Hook into winston logs to emit to in-memory event bus
 logger.on('data', (log) => {
