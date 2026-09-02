@@ -43,7 +43,12 @@ router.post('/webhook', verifySignature, async (req, res) => {
             messageId: message.id,
             timestamp: message.timestamp,
             type: message.type,
-            text: message.text?.body || null,
+            text:
+              message.text?.body ||
+              message.document?.caption ||
+              message.image?.caption ||
+              message.video?.caption ||
+              null,
             image: message.image || null,
             document: message.document || null,
             audio: message.audio || null,

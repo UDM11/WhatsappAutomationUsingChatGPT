@@ -146,19 +146,74 @@ Your previous context has been cleared. What would you like to explore next?`;
         case 'text':
           chatgptInput = text;
           break;
-        case 'image':
-          chatgptInput = text
-            ? `[User sent an image with caption: "${text}". Please provide a helpful response.]`
-            : '[User shared a photo with you. Please acknowledge and ask how you can help.]';
+
+        case 'document': {
+          const doc = messageData.document || {};
+          const filename = doc.filename || 'document';
+          const caption = text || 'Please analyze, summarize, and explain the key points in this document.';
+          let docContent = '';
+
+          // Download document if Meta media ID is present
+          if (!isSimulation && doc.id) {
+            const sanitizedName = `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+            const tempPath = path.join(IMAGE_DIR, sanitizedName);
+            const downloaded = await whatsappService.downloadMedia(doc.id, tempPath);
+
+            if (downloaded && fs.existsSync(downloaded)) {
+              try {
+                const ext = path.extname(filename).toLowerCase();
+                const textExtensions = [
+                  '.txt', '.csv', '.json', '.md', '.js', '.py', '.html',
+                  '.css', '.xml', '.yaml', '.yml', '.sql', '.sh', '.ts',
+                  '.c', '.cpp', '.java', '.php', '.log'
+                ];
+
+                if (textExtensions.includes(ext)) {
+                  docContent = fs.readFileSync(downloaded, 'utf8').substring(0, 15000);
+                } else if (ext === '.pdf') {
+                  const rawPdf = fs.readFileSync(downloaded, 'latin1');
+                  const textBlocks = rawPdf.match(/\(([^\(\)]{3,})\)\s*Tj/g) || [];
+                  const extracted = textBlocks.map((b) => b.replace(/^\(|\)\s*Tj$/g, '')).join(' ');
+                  if (extracted.length > 50) {
+                    docContent = extracted.substring(0, 15000);
+                  } else {
+                    docContent = `[PDF Document: ${filename} (Size: ${(fs.statSync(downloaded).size / 1024).toFixed(1)} KB)]`;
+                  }
+                } else {
+                  docContent = `[Attached Document: ${filename} (Size: ${(fs.statSync(downloaded).size / 1024).toFixed(1)} KB)]`;
+                }
+              } catch (readErr) {
+                logger.warn(`Could not extract text from document ${filename}:`, readErr.message);
+              }
+            }
+          }
+
+          if (docContent && docContent.length > 10) {
+            chatgptInput = `The user sent a document file named "${filename}".\n\n--- DOCUMENT CONTENT ---\n${docContent}\n--- END OF DOCUMENT ---\n\nUser instructions: ${caption}`;
+          } else {
+            chatgptInput = `The user sent a document file titled "${filename}". User request: "${caption}". Please provide a helpful, comprehensive response.`;
+          }
           break;
-        case 'document':
+        }
+
+        case 'image': {
+          const caption = text || 'Please describe and analyze this image.';
           chatgptInput = text
-            ? `[User uploaded a document titled: "${text}".]`
-            : '[User shared a document file.]';
+            ? `[User sent an image with caption: "${caption}". Please provide a detailed and helpful response.]`
+            : '[User shared a photo with you. Please acknowledge and describe how you can help analyze or work with it.]';
           break;
+        }
+
+        case 'location': {
+          const loc = messageData.location || {};
+          chatgptInput = `The user shared their GPS location (Latitude: ${loc.latitude}, Longitude: ${loc.longitude}${loc.name ? `, Place: ${loc.name}` : ''}${loc.address ? `, Address: ${loc.address}` : ''}). Please provide helpful local facts, weather context, or recommendations.`;
+          break;
+        }
+
         case 'audio':
-          chatgptInput = '[User sent a voice audio note.]';
+          chatgptInput = '[The user sent a voice audio note. Acknowledge their voice note and let them know you received it.]';
           break;
+
         default:
           chatgptInput = text || '[User sent a message]';
       }

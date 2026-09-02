@@ -1,3 +1,4 @@
+const fs = require('fs');
 const axios = require('axios');
 const logger = require('../utils/logger');
 const config = require('../config');
@@ -134,6 +135,37 @@ class WhatsAppService {
     } catch (error) {
       logger.error('Failed to send image:', error.response?.data || error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Download incoming media (documents, images, audio) from WhatsApp Cloud API.
+   */
+  async downloadMedia(mediaId, destinationPath) {
+    try {
+      if (!config.whatsapp.accessToken || !mediaId) return null;
+
+      // 1. Get temporary download URL from Meta Graph API
+      const metaRes = await this.client.get(`/${mediaId}`);
+      const mediaUrl = metaRes.data?.url;
+      if (!mediaUrl) throw new Error('Failed to retrieve media URL from Meta');
+
+      // 2. Download binary file with Authorization header
+      const fileRes = await axios.get(mediaUrl, {
+        responseType: 'arraybuffer',
+        headers: {
+          Authorization: `Bearer ${config.whatsapp.accessToken}`,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+        timeout: 30000,
+      });
+
+      fs.writeFileSync(destinationPath, Buffer.from(fileRes.data));
+      logger.info(`Successfully downloaded WhatsApp media ${mediaId} to ${destinationPath}`);
+      return destinationPath;
+    } catch (error) {
+      logger.error(`Failed to download media ${mediaId}:`, error.response?.data || error.message);
+      return null;
     }
   }
 
