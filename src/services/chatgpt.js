@@ -275,7 +275,15 @@ class ChatGPTService {
               const images = [];
               imgElements.forEach((img) => {
                 const src = img.getAttribute('src');
-                if (src && !src.includes('avatar') && !src.includes('profile')) {
+                const width = img.naturalWidth || img.width || 0;
+                const height = img.naturalHeight || img.height || 0;
+                if (
+                  src &&
+                  !src.includes('avatar') &&
+                  !src.includes('profile') &&
+                  !src.includes('data:image/svg') &&
+                  (width >= 100 || height >= 100 || src.includes('oaiusercontent') || src.includes('dalle'))
+                ) {
                   images.push(src);
                 }
               });
@@ -292,7 +300,7 @@ class ChatGPTService {
             throw evalErr;
           }
 
-          if (status && status.hasNewMsg && status.text.length > 0) {
+          if (status && status.hasNewMsg && (status.text.length > 0 || status.images.length > 0)) {
             replyText = status.text;
             replyImages = status.images;
 
@@ -302,8 +310,9 @@ class ChatGPTService {
               break;
             }
 
-            // Text stability fallback
-            if (replyText.length === lastLength) {
+            // Stability fallback
+            const currentSig = replyText.length + replyImages.length * 100;
+            if (currentSig === lastLength) {
               stableCount++;
               if (stableCount >= 4) {
                 completed = true;
@@ -311,15 +320,19 @@ class ChatGPTService {
               }
             } else {
               stableCount = 0;
-              lastLength = replyText.length;
+              lastLength = currentSig;
             }
           }
 
           await this._delay(pollIntervalMs);
         }
 
-        if (!completed && replyText.length === 0) {
+        if (!completed && replyText.length === 0 && replyImages.length === 0) {
           throw new Error('Timeout waiting for ChatGPT response');
+        }
+
+        if (replyImages.length > 0 && !replyText) {
+          replyText = 'Here is your generated image! 🎨';
         }
 
         const duration = Date.now() - startTime;

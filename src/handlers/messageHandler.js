@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const axios = require('axios');
 const whatsappService = require('../services/whatsapp');
 const aiProvider = require('../services/aiProvider');
 const chatgptService = require('../services/chatgpt');
@@ -246,26 +247,17 @@ Your previous context has been cleared. What would you like to explore next?`;
   }
 
   async _downloadFile(url, filePath) {
-    return new Promise((resolve, reject) => {
-      const client = url.startsWith('https') ? https : require('http');
-      const request = client.get(url, (response) => {
-        if (response.statusCode === 301 || response.statusCode === 302) {
-          response.resume();
-          request.destroy();
-          return this._downloadFile(response.headers.location, filePath);
-        }
-        const file = fs.createWriteStream(filePath);
-        response.pipe(file);
-        file.on('finish', () => {
-          file.close(resolve);
-        });
-        file.on('error', (err) => {
-          fs.unlink(filePath, () => {});
-          reject(err);
-        });
-      });
-      request.on('error', reject);
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        Referer: 'https://chatgpt.com/',
+      },
+      timeout: 20000,
     });
+    fs.writeFileSync(filePath, Buffer.from(response.data));
   }
 
   getConversationHistory(userId) {
