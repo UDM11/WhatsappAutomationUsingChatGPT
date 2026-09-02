@@ -112,7 +112,9 @@ class ChatGPTService {
       await this.page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
 
       // Check for prompt input textarea
-      await this.page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 25000 });
+      const composerSelector =
+        '#mobile-composer-prompt, textarea.wm-composer-textarea, #prompt-textarea, textarea, div[contenteditable="true"]';
+      await this.page.waitForSelector(composerSelector, { timeout: 25000 });
       this.isReady = true;
       logger.info('✅ ChatGPT ready and connected to chatgpt.com');
     } catch (error) {
@@ -137,7 +139,9 @@ class ChatGPTService {
       if (this.page && !this.page.isClosed()) {
         logger.info('Resetting ChatGPT conversation to fresh chat...');
         await this.page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await this.page.waitForSelector('#prompt-textarea, textarea, div[contenteditable="true"]', { timeout: 20000 });
+        const composerSelector =
+          '#mobile-composer-prompt, textarea.wm-composer-textarea, #prompt-textarea, textarea, div[contenteditable="true"]';
+        await this.page.waitForSelector(composerSelector, { timeout: 20000 });
       }
     } catch (error) {
       logger.error('Error resetting ChatGPT session:', error);
@@ -175,25 +179,38 @@ class ChatGPTService {
 
         await this.init();
 
-        const inputSelector = '#prompt-textarea, textarea, div[contenteditable="true"]';
+        const inputSelector =
+          '#mobile-composer-prompt, textarea.wm-composer-textarea, #prompt-textarea, textarea, div[contenteditable="true"]';
         await this.page.waitForSelector(inputSelector, { timeout: 15000 });
 
         // Count assistant messages BEFORE sending prompt to accurately detect the new reply
         const initialCount = await this.page.evaluate(() => {
-          const assistantRoles = document.querySelectorAll('[data-message-author-role="assistant"]');
-          return assistantRoles.length > 0 ? assistantRoles.length : document.querySelectorAll('.markdown').length;
+          const assistantRoles = document.querySelectorAll(
+            '[data-message-role="assistant"], [data-message-author-role="assistant"], ._wdUoQG_assistantMessage, .markdown'
+          );
+          return assistantRoles.length;
         });
 
-        await this.page.focus(inputSelector);
+        await this.page.click(inputSelector).catch(() => {});
+        await this.page.focus(inputSelector).catch(() => {});
         await this._delay(200);
 
         // Type prompt
         await this.page.keyboard.type(item.message, { delay: 10 });
-        await this._delay(400);
+        await this._delay(300);
 
         // Click send button or press Enter
-        const sendBtnSelector =
-          'button[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"], button.mb-1, button[aria-label="Send"]';
+        const sendBtnSelector = [
+          'button[aria-label="Send message"]',
+          'button[data-composer-submit]',
+          'button.wm-composer-submitButton',
+          'button[data-testid="send-button"]',
+          'button[aria-label="Send prompt"]',
+          'button[data-testid="fruitjuice-send-button"]',
+          'button.mb-1',
+          'button[aria-label="Send"]',
+        ].join(', ');
+
         const sendBtn = await this.page.$(sendBtnSelector);
         if (sendBtn) {
           await sendBtn.click().catch(() => {});
@@ -214,50 +231,71 @@ class ChatGPTService {
         await this._delay(1500);
 
         while (Date.now() - startWait < maxWaitMs) {
-          const status = await this.page.evaluate((initialMsgCount) => {
-            const assistantNodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
-            const markdownNodes = Array.from(document.querySelectorAll('.markdown'));
-            const messages = assistantNodes.length > 0 ? assistantNodes : markdownNodes;
+          let status = null;
+          try {
+            status = await this.page.evaluate((initialMsgCount) => {
+              const assistantNodes = Array.from(
+                document.querySelectorAll(
+                  '[data-message-role="assistant"], [data-message-author-role="assistant"], ._wdUoQG_assistantMessage'
+                )
+              );
+              const markdownNodes = Array.from(document.querySelectorAll('.markdown'));
+              const messages = assistantNodes.length > 0 ? assistantNodes : markdownNodes;
 
-            if (messages.length <= initialMsgCount) {
-              return { hasNewMsg: false, isStreaming: true, text: '', images: [] };
-            }
-
-            const lastMsg = messages[messages.length - 1];
-
-            // Extract formatted text preserving code blocks
-            const preBlocks = Array.from(lastMsg.querySelectorAll('pre'));
-            preBlocks.forEach((pre) => {
-              const codeElem = pre.querySelector('code');
-              const codeText = codeElem ? (codeElem.innerText || codeElem.textContent) : (pre.innerText || pre.textContent);
-              const langMatch = pre.className.match(/language-(\w+)/) || (codeElem ? codeElem.className.match(/language-(\w+)/) : null);
-              const lang = langMatch ? langMatch[1] : '';
-              pre.setAttribute('data-extracted-code', `\n\`\`\`${lang}\n${codeText.trim()}\n\`\`\`\n`);
-            });
-
-            const markdown = lastMsg.querySelector('.markdown') || lastMsg;
-            const text = (markdown.innerText || markdown.textContent || '').trim();
-
-            const stopBtn = document.querySelector('button[aria-label="Stop generating"], button[data-testid="stop-button"]');
-            const streaming = document.querySelector('.result-streaming');
-            const imageLoading = document.querySelector('[data-testid="image-gen-loading"]');
-
-            const isStreaming = Boolean(stopBtn || streaming || imageLoading);
-
-            // Extract images (e.g. from DALL-E)
-            const imgElements = Array.from(lastMsg.querySelectorAll('img'));
-            const images = [];
-            imgElements.forEach((img) => {
-              const src = img.getAttribute('src');
-              if (src && !src.includes('avatar') && !src.includes('profile')) {
-                images.push(src);
+              if (messages.length <= initialMsgCount) {
+                return { hasNewMsg: false, isStreaming: true, text: '', images: [] };
               }
-            });
 
-            return { hasNewMsg: true, isStreaming, text, images };
-          }, initialCount);
+              const lastMsg = messages[messages.length - 1];
 
-          if (status.hasNewMsg && status.text.length > 0) {
+              // Extract formatted text preserving code blocks
+              const preBlocks = Array.from(lastMsg.querySelectorAll('pre'));
+              preBlocks.forEach((pre) => {
+                const codeElem = pre.querySelector('code');
+                const codeText = codeElem ? (codeElem.innerText || codeElem.textContent) : (pre.innerText || pre.textContent);
+                const langMatch = pre.className.match(/language-(\w+)/) || (codeElem ? codeElem.className.match(/language-(\w+)/) : null);
+                const lang = langMatch ? langMatch[1] : '';
+                pre.setAttribute('data-extracted-code', `\n\`\`\`${lang}\n${codeText.trim()}\n\`\`\`\n`);
+              });
+
+              const contentNode = lastMsg.querySelector('._wdUoQG_messageCopy, .markdown') || lastMsg;
+              let text = (contentNode.innerText || contentNode.textContent || '').trim();
+
+              if (text.startsWith('ChatGPT said:')) {
+                text = text.replace(/^ChatGPT said:\s*/i, '').trim();
+              }
+
+              const stopBtn = document.querySelector(
+                'button[aria-label="Stop generating"], button[data-testid="stop-button"], button[data-stop-label="Stop generating"]'
+              );
+              const streaming = document.querySelector('.result-streaming, ._wdUoQG_streaming');
+              const imageLoading = document.querySelector('[data-testid="image-gen-loading"]');
+
+              const isStreaming = Boolean(stopBtn || streaming || imageLoading);
+
+              // Extract images (e.g. from DALL-E)
+              const imgElements = Array.from(lastMsg.querySelectorAll('img'));
+              const images = [];
+              imgElements.forEach((img) => {
+                const src = img.getAttribute('src');
+                if (src && !src.includes('avatar') && !src.includes('profile')) {
+                  images.push(src);
+                }
+              });
+
+              return { hasNewMsg: true, isStreaming, text, images };
+            }, initialCount);
+          } catch (evalErr) {
+            // Gracefully handle URL navigation when starting a fresh chat thread
+            if (evalErr.message && evalErr.message.includes('Execution context was destroyed')) {
+              logger.info('ChatGPT navigating thread URL, preserving polling context...');
+              await this._delay(600);
+              continue;
+            }
+            throw evalErr;
+          }
+
+          if (status && status.hasNewMsg && status.text.length > 0) {
             replyText = status.text;
             replyImages = status.images;
 
