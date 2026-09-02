@@ -17,7 +17,7 @@ class AIProvider {
       logger.info('Attempting response via ChatGPT Puppeteer automation...');
       const result = await Promise.race([
         chatgptService.sendMessage(prompt, conversationId),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('AI Engine Timeout (55s)')), 55000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('AI Engine Timeout (120s)')), 120000)),
       ]);
 
       if (result && result.text && result.text.trim()) {

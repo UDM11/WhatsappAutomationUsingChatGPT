@@ -224,7 +224,7 @@ class ChatGPTService {
         let completed = false;
         let lastLength = 0;
         let stableCount = 0;
-        const maxWaitMs = 60000;
+        const maxWaitMs = 120000;
         const pollIntervalMs = 800;
         const startWait = Date.now();
 

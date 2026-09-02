@@ -130,9 +130,9 @@ Your previous context has been cleared. What would you like to explore next?`;
       if (cmdResult) return cmdResult;
     }
 
-    // 3. Lock with auto-expiry (max 25s)
+    // 3. Lock with auto-expiry (max 120s)
     const lockTime = this.processingUsers.get(from);
-    if (lockTime && Date.now() - lockTime < 25000) {
+    if (lockTime && Date.now() - lockTime < 120000) {
       logger.info(`User ${from} is already in active generation queue. Silently queuing.`);
       return { status: 'busy', reply: 'Queued' };
     }
