@@ -147,6 +147,21 @@ router.post('/test-whatsapp', async (req, res) => {
   }
 });
 
+// 5b. Debug Live ChatGPT Puppeteer Page State
+router.get('/debug-chatgpt', async (req, res) => {
+  try {
+    if (!chatgptService.page || chatgptService.page.isClosed()) {
+      return res.json({ status: 'no_page', isReady: chatgptService.isReady });
+    }
+    const url = chatgptService.page.url();
+    const title = await chatgptService.page.title();
+    const text = await chatgptService.page.evaluate(() => document.body ? document.body.innerText.substring(0, 800) : 'empty');
+    res.json({ status: 'ok', url, title, text, isReady: chatgptService.isReady });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
 // 6. Get Chat Histories
 router.get('/conversations', (req, res) => {
   const { phone } = req.query;
