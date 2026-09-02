@@ -183,13 +183,13 @@ class ChatGPTService {
           '#mobile-composer-prompt, textarea.wm-composer-textarea, #prompt-textarea, textarea, div[contenteditable="true"]';
         await this.page.waitForSelector(inputSelector, { timeout: 15000 });
 
+        const ASSISTANT_SELECTOR =
+          '[data-message-role="assistant"], [data-message-author-role="assistant"], ._wdUoQG_assistantMessage';
+
         // Count assistant messages BEFORE sending prompt to accurately detect the new reply
-        const initialCount = await this.page.evaluate(() => {
-          const assistantRoles = document.querySelectorAll(
-            '[data-message-role="assistant"], [data-message-author-role="assistant"], ._wdUoQG_assistantMessage, .markdown'
-          );
-          return assistantRoles.length;
-        });
+        const initialCount = await this.page.evaluate((sel) => {
+          return document.querySelectorAll(sel).length;
+        }, ASSISTANT_SELECTOR);
 
         await this.page.click(inputSelector).catch(() => {});
         await this.page.focus(inputSelector).catch(() => {});
@@ -233,17 +233,14 @@ class ChatGPTService {
         while (Date.now() - startWait < maxWaitMs) {
           let status = null;
           try {
-            status = await this.page.evaluate((initialMsgCount) => {
-              const assistantNodes = Array.from(
-                document.querySelectorAll(
-                  '[data-message-role="assistant"], [data-message-author-role="assistant"], ._wdUoQG_assistantMessage'
-                )
-              );
-              const markdownNodes = Array.from(document.querySelectorAll('.markdown'));
-              const messages = assistantNodes.length > 0 ? assistantNodes : markdownNodes;
+            status = await this.page.evaluate((initialMsgCount, sel) => {
+              const messages = Array.from(document.querySelectorAll(sel));
 
               if (messages.length <= initialMsgCount) {
-                return { hasNewMsg: false, isStreaming: true, text: '', images: [] };
+                const stopBtn = document.querySelector(
+                  'button[aria-label="Stop generating"], button[data-testid="stop-button"], button[data-stop-label="Stop generating"], .result-streaming, ._wdUoQG_streaming'
+                );
+                return { hasNewMsg: false, isStreaming: Boolean(stopBtn), text: '', images: [] };
               }
 
               const lastMsg = messages[messages.length - 1];
@@ -284,7 +281,7 @@ class ChatGPTService {
               });
 
               return { hasNewMsg: true, isStreaming, text, images };
-            }, initialCount);
+            }, initialCount, ASSISTANT_SELECTOR);
           } catch (evalErr) {
             // Gracefully handle URL navigation when starting a fresh chat thread
             if (evalErr.message && evalErr.message.includes('Execution context was destroyed')) {
