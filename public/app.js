@@ -4,7 +4,7 @@
 
 class AppController {
   constructor() {
-    this.phone = '+9779818155158';
+    this.phone = 'whatsapp-simulator-client';
     this.isProcessing = false;
     this.eventSource = null;
 
@@ -64,17 +64,6 @@ class AppController {
       });
     }
 
-    // Quick Prompts
-    document.querySelectorAll('.quick-prompt-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const prompt = btn.getAttribute('data-prompt');
-        if (prompt) {
-          this.inputBox.value = prompt;
-          this.sendMessage();
-        }
-      });
-    });
-
     // Refresh Stats
     const btnRefresh = document.getElementById('btn-refresh-stats');
     if (btnRefresh) {
@@ -105,7 +94,7 @@ class AppController {
             </div>
           </div>
         `;
-        this.logConsole('Chat history cleared for ' + this.phone, 'warn');
+        this.logConsole('Chat history cleared for simulator session.', 'warn');
       });
     }
 
